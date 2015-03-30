@@ -1,5 +1,6 @@
 import math
 import numpy
+from scipy import integrate
 
 class Source:
    """Contains information related to a source (or sink)."""
@@ -98,4 +99,73 @@ class Doublet:
       X, Y -- mesh grid.
       """
       self.psi = -self.strength/(2*math.pi)*(Y-self.y)/((X-self.x)**2+(Y-self.y)**2)
+
+
+class Panel:
+    """Contains information related to a panel."""
+    def __init__(self, xa, ya, xb, yb):
+        """Initializes the panel.
+
+        Arguments
+        ---------
+        xa, ya -- coordinates of the first end-point of the panel.
+        xb, yb -- coordinates of the second end-point of the panel.
+        """
+        self.xa, self.ya = xa, ya
+        self.xb, self.yb = xb, yb
+
+        self.xc, self.yc = (xa+xb)/2, (ya+yb)/2       # control-point (center-point)
+        self.length = math.sqrt((xb-xa)**2+(yb-ya)**2)     # length of the panel
+
+                                                                                                                                  # orientation of the panel (angle between x-axis and panel's normal)
+        if xb-xa <= 0.:
+            self.beta = math.acos((yb-ya)/self.length)
+        elif xb-xa > 0.:
+            self.beta = math.pi + math.acos(-(yb-ya)/self.length)
+
+        self.sigma = 0.                             # source strength
+        self.vt = 0.                                # tangential velocity
+        self.cp = 0.                                # pressure coefficient
+
+def integral_tangential(p_i, p_j):
+    """Evaluates the contribution of a panel at the center-point of another,
+    in the tangential direction.
+
+    Arguments
+    ---------
+    p_i -- panel on which the contribution is calculated.
+    p_j -- panel from which the contribution is calculated.
+
+    Returns
+    -------
+    Integral over the panel of the influence at a control-point.
+    """
+    def func(s):
+        return ( (-(p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))*math.sin(p_i.beta)
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))*math.cos(p_i.beta))
+                  /((p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))**2
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))**2) )
+
+    return integrate.quad(lambda s:func(s),0.,p_j.length)[0]
+
+def integral_normal(p_i, p_j):
+    """Evaluates the contribution of a panel at the center-point of another,
+    in the normal direction.
+    Arguments
+    ---------
+    p_i -- panel on which the contribution is calculated.
+    p_j -- panel from which the contribution is calculated.
+
+    Returns
+    -------
+    Integral over the panel of the influence at a control-point.
+    """
+    def func(s):
+        return ( (+(p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))*math.cos(p_i.beta)
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))*math.sin(p_i.beta))
+                  /((p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))**2
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))**2) )
+
+    return integrate.quad(lambda s:func(s), 0., p_j.length)[0]
+
 
