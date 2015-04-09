@@ -101,6 +101,19 @@ class Doublet:
       self.psi = -self.strength/(2*math.pi)*(Y-self.y)/((X-self.x)**2+(Y-self.y)**2)
 
 
+class Freestream:
+    """Freestream conditions."""
+    def __init__(self, u_inf=1.0, alpha=0.0):
+       """Sets the freestream conditions.
+
+       Arguments
+       ---------
+       u_inf -- Farfield speed (default 1.0).
+       alpha -- Angle of attack in degrees (default 0.0).
+       """
+       self.u_inf = u_inf
+       self.alpha = alpha*math.pi/180          # degrees --> radians
+
 class Panel:
     """Contains information related to a panel."""
     def __init__(self, xa, ya, xb, yb):
@@ -117,15 +130,61 @@ class Panel:
         self.xc, self.yc = (xa+xb)/2, (ya+yb)/2       # control-point (center-point)
         self.length = math.sqrt((xb-xa)**2+(yb-ya)**2)     # length of the panel
 
-                                                                                                                                  # orientation of the panel (angle between x-axis and panel's normal)
+        # orientation of the panel (angle between x-axis and panel's normal)
         if xb-xa <= 0.:
             self.beta = math.acos((yb-ya)/self.length)
         elif xb-xa > 0.:
             self.beta = math.pi + math.acos(-(yb-ya)/self.length)
 
+        # location of the panel
+        if self.beta <= math.pi:
+            self.loc = 'extrados'
+        else:
+            self.loc = 'intrados'
+
         self.sigma = 0.                             # source strength
         self.vt = 0.                                # tangential velocity
         self.cp = 0.                                # pressure coefficient
+
+
+def define_panels(x, y, N=40):
+    """Discretizes the geometry into panels using 'cosine' method.
+
+    Arguments
+    ---------
+    x, y -- Cartesian coordinates of the geometry (1D arrays).
+    N - number of panels (default 40).
+
+    Returns
+    -------
+    panels -- Numpy array of panels.
+    """
+    R = (x.max()-x.min())/2                                    # radius of the circle
+    x_center = (x.max()+x.min())/2                             # x-coord of the center
+    x_circle = x_center + R*numpy.cos(numpy.linspace(0, 2*math.pi, N+1))  # x-coord of the circle points
+    x_ends = numpy.copy(x_circle)      # projection of the x-coord on the surface
+    y_ends = numpy.empty_like(x_ends)  # initialization of the y-coord Numpy array
+
+    x, y = numpy.append(x, x[0]), numpy.append(y, y[0])    # extend arrays using numpy.append
+
+    # computes the y-coordinate of end-points
+    I = 0
+    for i in range(N):
+        while I < len(x)-1:
+            if (x[I] <= x_ends[i] <= x[I+1]) or (x[I+1] <= x_ends[i] <= x[I]):
+                break
+            else:
+                I += 1
+        a = (y[I+1]-y[I])/(x[I+1]-x[I])
+        b = y[I+1] - a*x[I+1]
+        y_ends[i] = a*x_ends[i] + b
+    y_ends[N] = y_ends[0]
+
+    panels = numpy.empty(N, dtype=object)
+    for i in range(N):
+        panels[i] = Panel(x_ends[i], y_ends[i], x_ends[i+1], y_ends[i+1])
+
+    return panels
 
 def integral_tangential(p_i, p_j):
     """Evaluates the contribution of a panel at the center-point of another,
@@ -169,3 +228,23 @@ def integral_normal(p_i, p_j):
     return integrate.quad(lambda s:func(s), 0., p_j.length)[0]
 
 
+def integral(x, y, panel, dxdz, dydz):
+    """Evaluates the contribution of a panel at one point.
+
+    Arguments
+    ---------
+    x, y -- Cartesian coordinates of the point.
+    panel -- panel which contribution is evaluated.
+    dxdz -- derivative of x in the z-direction.
+    dydz -- derivative of y in the z-direction.
+
+    Returns
+    -------
+    Integral over the panel of the influence at one point.
+    """
+    def func(s):
+        return ( ((x - (panel.xa - math.sin(panel.beta)*s))*dxdz
+                 +(y - (panel.ya + math.cos(panel.beta)*s))*dydz)
+                 /((x - (panel.xa - math.sin(panel.beta)*s))**2
+                 +(y - (panel.ya + math.cos(panel.beta)*s))**2) )
+    return integrate.quad(lambda s:func(s), 0., panel.length)[0]
