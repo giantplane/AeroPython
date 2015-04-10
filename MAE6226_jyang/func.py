@@ -166,6 +166,7 @@ def define_panels(x, y, N=40):
     y_ends = numpy.empty_like(x_ends)  # initialization of the y-coord Numpy array
 
     x, y = numpy.append(x, x[0]), numpy.append(y, y[0])    # extend arrays using numpy.append
+                                                           # to get a closed trailing edge
 
     # computes the y-coordinate of end-points
     I = 0
@@ -185,47 +186,6 @@ def define_panels(x, y, N=40):
         panels[i] = Panel(x_ends[i], y_ends[i], x_ends[i+1], y_ends[i+1])
 
     return panels
-
-def integral_tangential(p_i, p_j):
-    """Evaluates the contribution of a panel at the center-point of another,
-    in the tangential direction.
-
-    Arguments
-    ---------
-    p_i -- panel on which the contribution is calculated.
-    p_j -- panel from which the contribution is calculated.
-
-    Returns
-    -------
-    Integral over the panel of the influence at a control-point.
-    """
-    def func(s):
-        return ( (-(p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))*math.sin(p_i.beta)
-                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))*math.cos(p_i.beta))
-                  /((p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))**2
-                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))**2) )
-
-    return integrate.quad(lambda s:func(s),0.,p_j.length)[0]
-
-def integral_normal(p_i, p_j):
-    """Evaluates the contribution of a panel at the center-point of another,
-    in the normal direction.
-    Arguments
-    ---------
-    p_i -- panel on which the contribution is calculated.
-    p_j -- panel from which the contribution is calculated.
-
-    Returns
-    -------
-    Integral over the panel of the influence at a control-point.
-    """
-    def func(s):
-        return ( (+(p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))*math.cos(p_i.beta)
-                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))*math.sin(p_i.beta))
-                  /((p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))**2
-                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))**2) )
-
-    return integrate.quad(lambda s:func(s), 0., p_j.length)[0]
 
 
 def integral(x, y, panel, dxdz, dydz):
@@ -248,3 +208,103 @@ def integral(x, y, panel, dxdz, dydz):
                  /((x - (panel.xa - math.sin(panel.beta)*s))**2
                  +(y - (panel.ya + math.cos(panel.beta)*s))**2) )
     return integrate.quad(lambda s:func(s), 0., panel.length)[0]
+
+def build_matrix(panels):
+    """Builds the source matrix.
+
+    Arguments
+    ---------
+    panels -- array of panels.
+
+    Returns
+    -------
+    A -- NxN matrix (N is the number of panels).
+    """
+    N = len(panels)
+    A = numpy.empty((N, N), dtype=float)
+    numpy.fill_diagonal(A, 0.5)
+
+    for i, p_i in enumerate(panels):
+        for j, p_j in enumerate(panels):
+            if i != j:
+                A[i,j] = 0.5/math.pi*integral(p_i.xc, p_i.yc, p_j, math.cos(p_i.beta), math.sin(p_i.beta))
+
+    return A
+
+def build_rhs(panels, freestream):
+    """Builds the RHS of the linear system.
+
+    Arguments
+    ---------
+    panels -- array of panels.
+    freestream -- farfield conditions.
+
+    Returns
+    -------
+    b -- 1D array ((N+1)x1, N is the number of panels).
+    """
+    b = numpy.empty(len(panels), dtype=float)
+
+    for i, panel in enumerate(panels):
+        b[i] = -freestream.u_inf * math.cos(freestream.alpha - panel.beta)
+
+    return b
+
+def get_tangential_velocity(panels, freestream):
+    """Computes the tangential velocity on the surface.
+
+    Arguments
+    ---------
+    panels -- array of panels.
+    freestream -- farfield conditions.
+    """
+    N = len(panels)
+    A = numpy.empty((N, N), dtype=float)
+    numpy.fill_diagonal(A, 0.0)
+
+    for i, p_i in enumerate(panels):
+        for j, p_j in enumerate(panels):
+            if i != j:
+                A[i,j] = 0.5/math.pi*integral(p_i.xc, p_i.yc, p_j, -math.sin(p_i.beta), math.cos(p_i.beta))
+
+    b = freestream.u_inf * numpy.sin([freestream.alpha - panel.beta for panel in panels])
+
+    sigma = numpy.array([panel.sigma for panel in panels])
+
+    vt = numpy.dot(A, sigma) + b
+
+    for i, panel in enumerate(panels):
+        panel.vt = vt[i]
+
+def get_pressure_coefficient(panels, freestream):
+    """Computes the surface pressure coefficients.
+
+    Arguments
+    ---------
+    panels -- array of panels.
+    freestream -- farfield conditions.
+    """
+    for panel in panels:
+        panel.cp = 1.0 - (panel.vt/freestream.u_inf)**2
+
+
+def get_velocity_field(panels, freestream, X, Y):
+    """Returns the velocity field.
+
+    Arguments
+    ---------
+    panels -- array of panels.
+    freestream -- farfield conditions.
+    X, Y -- mesh grid.
+    """
+    Nx, Ny = X.shape
+    u, v = numpy.empty((Nx, Ny), dtype=float), numpy.empty((Nx, Ny), dtype=float)
+
+    for i in xrange(Nx):
+        for j in xrange(Ny):
+            u[i,j] = freestream.u_inf*math.cos(freestream.alpha)\
+                     + 0.5/math.pi*sum([p.sigma*integral(X[i,j], Y[i,j], p, 1, 0) for p in panels])
+            v[i,j] = freestream.u_inf*math.sin(freestream.alpha)\
+                     + 0.5/math.pi*sum([p.sigma*integral(X[i,j], Y[i,j], p, 0, 1) for p in panels])
+
+    return u, v

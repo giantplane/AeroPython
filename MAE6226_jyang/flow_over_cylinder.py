@@ -4,6 +4,48 @@ from scipy import integrate
 from matplotlib import pyplot
 from func import *
 
+def integral_tangential(p_i, p_j):
+    """Evaluates the contribution of a panel at the center-point of another,
+    in the tangential direction.
+
+    Arguments
+    ---------
+    p_i -- panel on which the contribution is calculated.
+    p_j -- panel from which the contribution is calculated.
+
+    Returns
+    -------
+    Integral over the panel of the influence at a control-point.
+    """
+    def func(s):
+        return ( (-(p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))*math.sin(p_i.beta)
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))*math.cos(p_i.beta))
+                  /((p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))**2
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))**2) )
+
+    return integrate.quad(lambda s:func(s),0.,p_j.length)[0]
+
+def integral_normal(p_i, p_j):
+    """Evaluates the contribution of a panel at the center-point of another,
+    in the normal direction.
+    Arguments
+    ---------
+    p_i -- panel on which the contribution is calculated.
+    p_j -- panel from which the contribution is calculated.
+
+    Returns
+    -------
+    Integral over the panel of the influence at a control-point.
+    """
+    def func(s):
+        return ( (+(p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))*math.cos(p_i.beta)
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))*math.sin(p_i.beta))
+                  /((p_i.xc-(p_j.xa-math.sin(p_j.beta)*s))**2
+                  +(p_i.yc-(p_j.ya+math.cos(p_j.beta)*s))**2) )
+
+    return integrate.quad(lambda s:func(s), 0., p_j.length)[0]
+
+
 u_inf = 1.0
 
 # defines the cylinder
