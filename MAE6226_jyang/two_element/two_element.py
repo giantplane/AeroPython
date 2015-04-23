@@ -41,60 +41,35 @@ pyplot.plot(numpy.append([panel.xa for panel in panels_main], panels_main[0].xa)
 pyplot.plot(numpy.append([panel.xa for panel in panels_flap], panels_flap[0].xa),
                  numpy.append([panel.ya for panel in panels_flap], panels_flap[0].ya),
                           linestyle='-', linewidth=1, marker='o', markersize=6, color='#CD2305');
-pyplot.show()
 
+# put together two panels
+panels = numpy.concatenate((panels_main, panels_flap))
 
 # defines and creates the object freestream
 u_inf = 1.0                                # freestream spee
-alpha = 4.0                                # angle of attack (in degrees)
+alpha = 0.0                                # angle of attack (in degrees)
 freestream = Freestream(u_inf, alpha)      # instantiation of the object freestream
+
 
 A = build_matrix(panels)                   # compu tes the singularity matrix
 b = build_rhs(panels, freestream)          # computes the freestream RHS
 
-print('stopping... ')
-sys.exit('')
-
 # solves the linear system
-variables = numpy.linalg.solve(A, b)
+solution = numpy.linalg.solve(A, b)
 
 for i, panel in enumerate(panels):
-    panel.sigma = variables[i]
-
-gamma = variables[-1]
-
-# computes the tangential velocity at the center-point of each panel
-get_tangential_velocity(panels, freestream,gamma)
-
-# computes the surface pressure coefficients
-get_pressure_coefficient(panels, freestream)
-
-# plots the surface pressure coefficient
-# plots the surface pressure coefficient
-val_x, val_y = 0.1, 0.2
-x_min, x_max = min( panel.xa for panel in panels ), max( panel.xa for panel in panels )
-cp_min, cp_max = min( panel.cp for panel in panels ), max( panel.cp for panel in panels )
-x_start, x_end = x_min-val_x*(x_max-x_min), x_max+val_x*(x_max-x_min)
-y_start, y_end = cp_min-val_y*(cp_max-cp_min), cp_max+val_y*(cp_max-cp_min)
-
-pyplot.figure(figsize=(10, 6))
-pyplot.grid(True)
-pyplot.xlabel('x', fontsize=16)
-pyplot.ylabel('$C_p$', fontsize=16)
-pyplot.plot([panel.xc for panel in panels if panel.loc == 'extrados'],
-                 [panel.cp for panel in panels if panel.loc == 'extrados'],
-                          color='r', linestyle='-', linewidth=2, marker='o', markersize=6)
-pyplot.plot([panel.xc for panel in panels if panel.loc == 'intrados'],
-                 [panel.cp for panel in panels if panel.loc == 'intrados'],
-                          color='b', linestyle='-', linewidth=1, marker='o', markersize=6)
-pyplot.legend(['extrados', 'intrados'], loc='best', prop={'size':14})
-pyplot.xlim(x_start, x_end)
-pyplot.ylim(y_start, y_end)
-pyplot.gca().invert_yaxis()
-pyplot.title('Number of panels : %d' % N);
+    panel.sigma = solution[i]
+    gamma_m, gamma_f = solution[-2], solution[-1]
 
 # calculates the accuracy
 accuracy = sum([panel.sigma*panel.length for panel in panels])
 print '--> sum of source/sink strengths:', accuracy
 
+print 'calculating cp'
+get_tangential_vel(panels, freestream, solution)
+
+get_pressure_coefficient(panels,freestream)
+print panels[2].cp
+N = len(panels)
+print panels[N/2+9].cp
 pyplot.show()
